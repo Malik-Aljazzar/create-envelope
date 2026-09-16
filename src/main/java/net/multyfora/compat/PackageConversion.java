@@ -5,6 +5,7 @@ import com.simibubi.create.content.logistics.box.PackageItem;
 import io.github.mortuusars.envelope.Envelope;
 import io.github.mortuusars.envelope.world.block.mailbox.MailboxBlockEntity;
 import io.github.mortuusars.envelope.world.item.component.PackageContents;
+import io.github.mortuusars.envelope.world.mail.MailService;
 import io.github.mortuusars.envelope.world.mail.address.Address;
 import io.github.mortuusars.envelope.world.mail.address.type.CustomAddress;
 import io.github.mortuusars.envelope.world.mail.address.type.ServiceAddress;
@@ -108,6 +109,19 @@ public class PackageConversion {
         }
 
         if (level instanceof ServerLevel serverLevel) {
+            // Fix (2026-09-15): a plain name (e.g. printed by a third-party
+            // "address printer" block instead of an Envelope Address Tag)
+            // used to always fall through to the CustomAddress below, which
+            // Envelope has no delivery handler for at all - mail addressed
+            // this way could never arrive, no matter how correctly the
+            // target mailbox was set up. Look the name up against
+            // Envelope's own known-address registry first, so it resolves
+            // to the real, deliverable address (Block/Player/Service) if
+            // one with that name is already registered.
+            var byName = MailService.of(serverLevel).getKnownAddresses().byName(addr);
+            if (byName.isPresent())
+                return byName.get();
+
             ServiceAddress service = resolveService(serverLevel, addr);
             if (service != null) return service;
         }

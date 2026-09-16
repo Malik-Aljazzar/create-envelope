@@ -27,6 +27,11 @@ displayName="${mod_name}" #mandatory
 
 description='''
 Create integration for the Envelope mail mod.
+
+This is a fork of "Create: Envelope compat" by multyfora (GPL-3.0-only),
+fixed for a bug where packages addressed by plain name (not an Address
+Tag) were converted into an undeliverable Envelope CustomAddress and
+could never arrive. Source: https://github.com/multyfora/createenvelope-1.21.1
 '''
 
 # The [[mixins]] block allows you to declare your mixin config to FML so that it gets loaded.
@@ -64,7 +69,7 @@ config="${mod_id}.mixins.json"
 [[dependencies.${mod_id}]]
     modId="envelope"
     type="required"
-    versionRange="[0.6.2,0.7.0)"
+    versionRange="[0.7.0,0.8.0)"
     ordering="NONE"
     side="BOTH"
 
