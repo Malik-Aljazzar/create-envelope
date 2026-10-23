@@ -25,6 +25,7 @@ repositories {
         name = "mortuusars"
         url = "https://raw.githubusercontent.com/mortuusars/resources/main/maven/"
     }
+    maven { url = "https://maven.ryanhcode.dev/releases" } // Sable Companion (bundled in Envelope)
 }
 
 base {
@@ -123,6 +124,10 @@ dependencies {
 
     // Envelope
     implementation("io.github.mortuusars.envelope:envelope-${minecraft_version}-neoforge:${envelope_version}") { transitive = false }
+    // Libraries Envelope 0.8 bundles via jar-in-jar; needed on the dev runtime (and Mortaar for compiling against Envelope's API)
+    compileOnly("io.github.mortuusars.mortaar:mortaar-${minecraft_version}-neoforge:${mortaar_version}") { transitive = false }
+    localRuntime("io.github.mortuusars.mortaar:mortaar-${minecraft_version}-neoforge:${mortaar_version}") { transitive = false }
+    localRuntime("dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:${sable_companion_version}") { transitive = false }
 
     // Mixin annotation processor
     annotationProcessor 'org.spongepowered:mixin:0.8.7:processor'

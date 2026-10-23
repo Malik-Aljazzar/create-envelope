@@ -23,6 +23,7 @@ import com.simibubi.create.content.logistics.box.PackageItem;
 import io.github.mortuusars.envelope.Envelope;
 import io.github.mortuusars.envelope.world.block.mailbox.MailboxBlockEntity;
 import io.github.mortuusars.envelope.world.item.component.PackageContents;
+import io.github.mortuusars.envelope.world.item.mail.Mail;
 import io.github.mortuusars.envelope.world.mail.MailService;
 import io.github.mortuusars.envelope.world.mail.address.Address;
 import io.github.mortuusars.envelope.world.mail.address.type.CustomAddress;
@@ -44,15 +45,24 @@ import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 public class PackageConversion {
 
+    /**
+     * A plain Envelope package (filled, or a loot-table package from a service) that gets turned into a Create
+     * package. Sealed packages and payback boxes/packages are other items and stay as they are - converting them
+     * would strip their seal (incl. soulbound locks) or break the payback flow.
+     */
     public static boolean isEnvelopePackage(ItemStack stack) {
-        return stack.has(Envelope.DataComponents.PACKAGE_CONTENTS);
+        return stack.is(Envelope.Items.PACKAGE.get())
+            && (stack.has(Envelope.DataComponents.PACKAGE_CONTENTS) || stack.has(DataComponents.CONTAINER_LOOT))
+            && !stack.has(Envelope.DataComponents.SEAL);
     }
 
     public static boolean isCreatePackage(ItemStack stack) {
@@ -66,7 +76,7 @@ public class PackageConversion {
     public static ItemStack toCreatePackage(ItemStack envelopePackage) {
         if (isCreatePackage(envelopePackage))
             return envelopePackage;
-        if (!isEnvelopePackage(envelopePackage) && !envelopePackage.has(DataComponents.CONTAINER_LOOT))
+        if (!isEnvelopePackage(envelopePackage))
             return envelopePackage;
 
         ItemStack workingStack = envelopePackage.copy();
@@ -79,20 +89,30 @@ public class PackageConversion {
 
         ItemStack createPackage = PackageItem.containing(items);
 
-        copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_RECIPIENT);
-        copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_SENDER);
-        copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_ID);
-        copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_DELIVERY_LOG);
-        copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_PAYBACK_REQUEST);
+        copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_ADDRESS_TAG);
+        copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_DELIVERY_INFO);
+        copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_PAYBACK_TAG);
         copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.PACKAGE_CONTENTS);
         copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.PACKAGE_EXPERIENCE);
 
-        if (workingStack.has(Envelope.DataComponents.MAIL_RECIPIENT)) {
-            var address = workingStack.get(Envelope.DataComponents.MAIL_RECIPIENT);
-            PackageItem.addAddress(createPackage, address.getString());
-        }
+        Mail.getRecipient(workingStack).ifPresent(address -> PackageItem.addAddress(createPackage, address.getString()));
 
         return createPackage;
+    }
+
+    /**
+     * Copies a Create package's contents into Envelope's package contents component, which is what Envelope
+     * itself reads (e.g. the Mail Service's mail crafting). Create's contents are the source of truth here.
+     */
+    public static void syncEnvelopeContents(ItemStack createPackage) {
+        ItemStackHandler crateContents = PackageItem.getContents(createPackage);
+        List<ItemStack> items = new ArrayList<>();
+        for (int i = 0; i < crateContents.getSlots(); i++) {
+            ItemStack slotItem = crateContents.getStackInSlot(i);
+            if (!slotItem.isEmpty())
+                items.add(slotItem.copy());
+        }
+        createPackage.set(Envelope.DataComponents.PACKAGE_CONTENTS, new PackageContents(items));
     }
 
     public static void syncAddresses(ItemStack stack, Level level) {
@@ -100,15 +120,13 @@ public class PackageConversion {
 
         boolean hasCreateAddr = stack.has(AllDataComponents.PACKAGE_ADDRESS)
             && !stack.getOrDefault(AllDataComponents.PACKAGE_ADDRESS, "").isEmpty();
-        boolean hasEnvAddr = stack.has(Envelope.DataComponents.MAIL_RECIPIENT);
+        var envAddr = Mail.getRecipient(stack);
 
-        if (hasCreateAddr && !hasEnvAddr) {
+        if (hasCreateAddr && envAddr.isEmpty()) {
             String addr = stack.get(AllDataComponents.PACKAGE_ADDRESS);
-            Address resolved = resolveAddress(addr, level);
-            stack.set(Envelope.DataComponents.MAIL_RECIPIENT, resolved);
-        } else if (hasEnvAddr && !hasCreateAddr) {
-            var addr = stack.get(Envelope.DataComponents.MAIL_RECIPIENT);
-            PackageItem.addAddress(stack, addr.getString());
+            Mail.setRecipient(stack, resolveAddress(addr, level));
+        } else if (envAddr.isPresent() && !hasCreateAddr) {
+            PackageItem.addAddress(stack, envAddr.get().getString());
         }
     }
 
@@ -154,7 +172,7 @@ public class PackageConversion {
         ResourceLocation loc = Envelope.resource(normalised);
         ResourceKey<ServiceAddressDefinition> key =
             ResourceKey.create(Envelope.Registries.SERVICE_ADDRESS_DEFINITION, loc);
-        var result = ServiceAddress.get(registries, key);
+        var result = ServiceAddress.get(key, registries);
         if (result.isPresent())
             return result.get();
 

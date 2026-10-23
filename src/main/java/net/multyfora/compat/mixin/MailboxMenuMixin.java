@@ -17,7 +17,7 @@ public class MailboxMenuMixin {
     private void onExtractMail(ServerLevel level, int index, CallbackInfoReturnable<ItemStack> cir) {
         ItemStack result = cir.getReturnValue();
         if (result.isEmpty()) return;
-        if (PackageConversion.isEnvelopePackage(result) || result.has(DataComponents.CONTAINER_LOOT))
+        if (PackageConversion.isEnvelopePackage(result))
             cir.setReturnValue(PackageConversion.toCreatePackage(result));
     }
 }

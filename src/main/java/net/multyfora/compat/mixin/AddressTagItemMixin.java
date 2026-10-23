@@ -29,7 +29,7 @@ public class AddressTagItemMixin {
         if (!PackageItem.isPackage(target))
             return;
 
-        var tagAddress = stack.get(Envelope.DataComponents.ADDRESS);
+        var tagAddress = stack.get(Envelope.DataComponents.ADDRESS_TAG_ADDRESS);
         var existingRecipient = Mail.getRecipient(target).orElse(null);
 
         if (Objects.equals(tagAddress, existingRecipient)) {
@@ -69,9 +69,6 @@ public class AddressTagItemMixin {
 
         ItemStack target = slot.getItem();
         if (!PackageItem.isPackage(target)) return;
-        if (!target.has(Envelope.DataComponents.MAIL_RECIPIENT)) return;
-
-        var addr = target.get(Envelope.DataComponents.MAIL_RECIPIENT);
-        PackageItem.addAddress(target, addr.getString());
+        Mail.getRecipient(target).ifPresent(addr -> PackageItem.addAddress(target, addr.getString()));
     }
 }

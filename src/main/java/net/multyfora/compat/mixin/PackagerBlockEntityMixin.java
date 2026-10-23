@@ -5,7 +5,6 @@ import com.simibubi.create.content.logistics.packager.PackagerBlock;
 import com.simibubi.create.content.logistics.packager.PackagerBlockEntity;
 import io.github.mortuusars.envelope.Envelope;
 import io.github.mortuusars.envelope.world.block.mailbox.MailboxBlockEntity;
-import io.github.mortuusars.envelope.world.item.component.Id;
 import io.github.mortuusars.envelope.world.item.component.PackageContents;
 import io.github.mortuusars.envelope.world.item.mail.Mail;
 import net.minecraft.core.BlockPos;
@@ -53,20 +52,11 @@ public class PackagerBlockEntityMixin {
 
         ItemStack mailStack = box.copyWithCount(1);
 
-        ItemStackHandler crateContents = PackageItem.getContents(box);
-        java.util.List<ItemStack> items = new java.util.ArrayList<>();
-        for (int i = 0; i < crateContents.getSlots(); i++) {
-            ItemStack slotItem = crateContents.getStackInSlot(i);
-            if (!slotItem.isEmpty())
-                items.add(slotItem.copy());
-        }
-        mailStack.set(Envelope.DataComponents.PACKAGE_CONTENTS, new PackageContents(items));
+        PackageConversion.syncEnvelopeContents(mailStack);
 
         PackageConversion.syncAddresses(mailStack, level);
         if (mailbox.getAddress() != null)
             Mail.setSender(mailStack, mailbox.getAddress());
-        if (!Mail.hasId(mailStack))
-            Mail.setId(mailStack, Id.create(level));
 
         mailbox.setItem(MailboxBlockEntity.SLOT_MAIL, mailStack);
         mailbox.setChanged();
@@ -99,20 +89,11 @@ public class PackagerBlockEntityMixin {
 
         ItemStack mailStack = self.heldBox.copy();
 
-        ItemStackHandler crateContents = PackageItem.getContents(self.heldBox);
-        java.util.List<ItemStack> items = new java.util.ArrayList<>();
-        for (int i = 0; i < crateContents.getSlots(); i++) {
-            ItemStack slotItem = crateContents.getStackInSlot(i);
-            if (!slotItem.isEmpty())
-                items.add(slotItem.copy());
-        }
-        mailStack.set(Envelope.DataComponents.PACKAGE_CONTENTS, new PackageContents(items));
+        PackageConversion.syncEnvelopeContents(mailStack);
 
         PackageConversion.syncAddresses(mailStack, level);
         if (mailbox.getAddress() != null)
             Mail.setSender(mailStack, mailbox.getAddress());
-        if (!Mail.hasId(mailStack))
-            Mail.setId(mailStack, Id.create(level));
 
         mailbox.setItem(MailboxBlockEntity.SLOT_MAIL, mailStack);
         mailbox.setChanged();

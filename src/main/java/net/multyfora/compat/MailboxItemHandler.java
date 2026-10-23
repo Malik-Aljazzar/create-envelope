@@ -1,7 +1,6 @@
 package net.multyfora.compat;
 
 import com.simibubi.create.content.logistics.box.PackageItem;
-import io.github.mortuusars.envelope.Envelope;
 import io.github.mortuusars.envelope.world.block.mailbox.MailboxBlockEntity;
 import io.github.mortuusars.envelope.world.item.component.PackageContents;
 import net.minecraft.core.component.DataComponents;
@@ -10,6 +9,11 @@ import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemStackHandler;
 
+/**
+ * Item handler for Envelope's mailbox (replaces Envelope's own SidedInvWrapper, see EnvelopeCapabilityRegistrationMixin).
+ * Slot layout (Envelope 0.8): 0 = outgoing mail, 1 = pigeon food, 2 = bat food, 3.. = inbox (one slot per received
+ * mail), followed by a read-only view of the outgoing Create package's contents.
+ */
 public class MailboxItemHandler implements IItemHandler {
     private final MailboxBlockEntity mailbox;
 
@@ -20,7 +24,7 @@ public class MailboxItemHandler implements IItemHandler {
     @Override
     public int getSlots() {
         int mailSize = mailbox.getAllMail().size();
-        int base = MailboxBlockEntity.INBOX_SLOT + mailSize;
+        int base = MailboxBlockEntity.SLOT_INBOX + mailSize;
         ItemStack mailStack = mailbox.getItem(MailboxBlockEntity.SLOT_MAIL);
         if (PackageItem.isPackage(mailStack)) {
             ItemStackHandler contents = PackageItem.getContents(mailStack);
@@ -32,12 +36,12 @@ public class MailboxItemHandler implements IItemHandler {
 
     @Override
     public ItemStack getStackInSlot(int slot) {
-        if (slot == MailboxBlockEntity.SLOT_FOOD || slot == MailboxBlockEntity.SLOT_MAIL)
+        if (slot >= 0 && slot < MailboxBlockEntity.SLOT_INBOX)
             return mailbox.getItem(slot);
 
-        if (slot >= MailboxBlockEntity.INBOX_SLOT) {
+        if (slot >= MailboxBlockEntity.SLOT_INBOX) {
             int mailSize = mailbox.getAllMail().size();
-            int inboxIndex = slot - MailboxBlockEntity.INBOX_SLOT;
+            int inboxIndex = slot - MailboxBlockEntity.SLOT_INBOX;
             if (inboxIndex < mailSize)
                 return mailbox.getAllMail().get(inboxIndex);
 
@@ -61,14 +65,7 @@ public class MailboxItemHandler implements IItemHandler {
         if (slot == MailboxBlockEntity.SLOT_MAIL && PackageItem.isPackage(stack) && !simulate) {
             Level level = mailbox.getLevel();
 
-            ItemStackHandler crateContents = PackageItem.getContents(stack);
-            java.util.List<ItemStack> items = new java.util.ArrayList<>();
-            for (int i = 0; i < crateContents.getSlots(); i++) {
-                ItemStack slotItem = crateContents.getStackInSlot(i);
-                if (!slotItem.isEmpty())
-                    items.add(slotItem.copy());
-            }
-            stack.set(Envelope.DataComponents.PACKAGE_CONTENTS, new PackageContents(items));
+            PackageConversion.syncEnvelopeContents(stack);
 
             PackageConversion.syncAddresses(stack, level);
         }
@@ -95,8 +92,8 @@ public class MailboxItemHandler implements IItemHandler {
     @Override
     public ItemStack extractItem(int slot, int amount, boolean simulate) {
         int mailSize = mailbox.getAllMail().size();
-        int inboxEnd = MailboxBlockEntity.INBOX_SLOT + mailSize;
-        if (slot < MailboxBlockEntity.INBOX_SLOT || slot >= inboxEnd)
+        int inboxEnd = MailboxBlockEntity.SLOT_INBOX + mailSize;
+        if (slot < MailboxBlockEntity.SLOT_INBOX || slot >= inboxEnd)
             return ItemStack.EMPTY;
 
         ItemStack existing = getStackInSlot(slot);
@@ -109,7 +106,7 @@ public class MailboxItemHandler implements IItemHandler {
             mailbox.removeItem(slot, toExtract);
         }
 
-        if (PackageConversion.isEnvelopePackage(extracted) || extracted.has(DataComponents.CONTAINER_LOOT))
+        if (PackageConversion.isEnvelopePackage(extracted))
             extracted = PackageConversion.toCreatePackage(extracted);
 
         return extracted;
@@ -118,19 +115,19 @@ public class MailboxItemHandler implements IItemHandler {
     @Override
     public int getSlotLimit(int slot) {
         int mailSize = mailbox.getAllMail().size();
-        int inboxEnd = MailboxBlockEntity.INBOX_SLOT + mailSize;
+        int inboxEnd = MailboxBlockEntity.SLOT_INBOX + mailSize;
         if (slot >= inboxEnd) return 0;
-        return slot < MailboxBlockEntity.INBOX_SLOT ? 64 : 1;
+        return slot < MailboxBlockEntity.SLOT_INBOX ? 64 : 1;
     }
 
     @Override
     public boolean isItemValid(int slot, ItemStack stack) {
         if (stack.isEmpty()) return false;
         int mailSize = mailbox.getAllMail().size();
-        int inboxEnd = MailboxBlockEntity.INBOX_SLOT + mailSize;
-        if (slot >= inboxEnd) return false;
-        if (slot == MailboxBlockEntity.SLOT_FOOD) return stack.is(Envelope.Tags.Items.PIGEON_FOOD);
-        if (slot == MailboxBlockEntity.SLOT_MAIL) return mailbox.isSendable(stack);
-        return slot >= MailboxBlockEntity.INBOX_SLOT;
+        int inboxEnd = MailboxBlockEntity.SLOT_INBOX + mailSize;
+        if (slot < 0 || slot >= inboxEnd) return false;
+        // Outgoing mail and the courier food slots: Envelope decides (isSendable / pigeon food / bat food tags).
+        if (slot < MailboxBlockEntity.SLOT_INBOX) return mailbox.canPlaceItem(slot, stack);
+        return false; // inbox slots only hand out received mail
     }
 }

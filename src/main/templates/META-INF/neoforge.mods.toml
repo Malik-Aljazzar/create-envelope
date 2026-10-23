@@ -69,7 +69,7 @@ config="${mod_id}.mixins.json"
 [[dependencies.${mod_id}]]
     modId="envelope"
     type="required"
-    versionRange="[0.7.0,0.8.0)"
+    versionRange="[0.8.0,0.9.0)"
     ordering="NONE"
     side="BOTH"
 
