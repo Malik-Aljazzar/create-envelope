@@ -2,6 +2,12 @@
 
 All notable changes to Create: Envelope Compat (Zeta Fix) are documented in this file.
 
+## [1.1.1]
+
+### Fixes
+- Seeds fed into a mailbox by chutes (or other logistics blocks) no longer end up in the outgoing mail slot once the pigeon food slot is full. The same applies to Spider Eyes and the bat food slot. Food that lands in the mail slot is now moved to its food slot; whatever doesn't fit there is dropped on top of the mailbox instead of blocking outgoing mail. Seeds already sitting in the mail slot from before can simply be taken out.
+- Logistics blocks can no longer merge a different item into a mailbox slot (e.g. beetroot seeds into a stack of wheat seeds, which turned them into wheat seeds).
+
 ## [1.1.0]
 
 **Requires Envelope 0.8.x** (the "Echoes In The Dark" update with the courier bats). Envelope 0.7.x is no longer supported - stay on 1.0.3 with Envelope 0.7.x.

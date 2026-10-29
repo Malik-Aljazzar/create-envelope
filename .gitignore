@@ -38,3 +38,6 @@ run/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
+
+# Dev GameTest run with the pack's server mods (copied jars)
+run-pack/

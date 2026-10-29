@@ -3,6 +3,7 @@ plugins {
     id 'maven-publish'
     id 'net.neoforged.moddev' version '2.0.141'
     id 'idea'
+    id 'me.modmuss50.mod-publish-plugin' version '2.2.1'
 }
 
 tasks.named('wrapper', Wrapper).configure {
@@ -30,6 +31,14 @@ repositories {
 
 base {
     archivesName = mod_id
+}
+
+// GameTests (src/gametest) - loaded by the dev runs only, never part of the released jar.
+sourceSets {
+    gametest {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
 }
 
 // Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.
@@ -71,6 +80,14 @@ neoForge {
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
+        // Same GameTests, but with the pack's server mods copied into run-pack/mods - for bugs that only show up
+        // next to other mods. Not part of the CI build.
+        packGameTestServer {
+            type = "gameTestServer"
+            gameDirectory = project.file('run-pack')
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
         data {
             data()
 
@@ -102,6 +119,7 @@ neoForge {
         // multi mod projects should define one per mod
         "${mod_id}" {
             sourceSet(sourceSets.main)
+            sourceSet(sourceSets.gametest)
         }
     }
 }
@@ -114,20 +132,27 @@ configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
 
+// -PpackRun: Create and Envelope are only compiled against; at runtime the pack's own jars in run-pack/mods are
+// used (see the packGameTestServer run), so the dev classpath doesn't clash with the pack's addons.
+def packRun = project.hasProperty('packRun')
+def modImpl = packRun ? 'compileOnly' : 'implementation'
+def modRuntime = packRun ? 'compileOnly' : 'runtimeOnly'
+def modLocalRuntime = packRun ? 'compileOnly' : 'localRuntime'
+
 dependencies {
     // Create
-    implementation("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
-    implementation("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
+    add(modImpl, "com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
+    add(modImpl, "net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
     compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
-    runtimeOnly("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
-    implementation("com.tterrag.registrate:Registrate:${registrate_version}")
+    add(modRuntime, "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
+    add(modImpl, "com.tterrag.registrate:Registrate:${registrate_version}")
 
     // Envelope
-    implementation("io.github.mortuusars.envelope:envelope-${minecraft_version}-neoforge:${envelope_version}") { transitive = false }
+    add(modImpl, "io.github.mortuusars.envelope:envelope-${minecraft_version}-neoforge:${envelope_version}") { transitive = false }
     // Libraries Envelope 0.8 bundles via jar-in-jar; needed on the dev runtime (and Mortaar for compiling against Envelope's API)
     compileOnly("io.github.mortuusars.mortaar:mortaar-${minecraft_version}-neoforge:${mortaar_version}") { transitive = false }
-    localRuntime("io.github.mortuusars.mortaar:mortaar-${minecraft_version}-neoforge:${mortaar_version}") { transitive = false }
-    localRuntime("dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:${sable_companion_version}") { transitive = false }
+    add(modLocalRuntime, "io.github.mortuusars.mortaar:mortaar-${minecraft_version}-neoforge:${mortaar_version}") { transitive = false }
+    add(modLocalRuntime, "dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:${sable_companion_version}") { transitive = false }
 
     // Mixin annotation processor
     annotationProcessor 'org.spongepowered:mixin:0.8.7:processor'
@@ -174,6 +199,50 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+// Release notes of this version: its own section of CHANGELOG.md, from "## [<mod_version>]" up to the next
+// "## [" heading. A release without one fails instead of going out with empty or wrong notes.
+def changelogSection = providers.provider {
+    def lines = file('CHANGELOG.md').readLines('UTF-8')
+    int start = lines.findIndexOf { it.trim() == "## [${mod_version}]" }
+    if (start < 0) {
+        throw new GradleException("CHANGELOG.md has no '## [${mod_version}]' section - add one before releasing")
+    }
+    int end = lines.findIndexOf(start + 1) { it.startsWith('## [') }
+    def body = lines.subList(start + 1, end < 0 ? lines.size() : end).join('\n').trim()
+    if (body.isEmpty()) {
+        throw new GradleException("The '## [${mod_version}]' section of CHANGELOG.md is empty")
+    }
+    "## [${mod_version}]\n\n${body}"
+}
+
+// Upload to CurseForge + GitHub release, run by .github/workflows/release.yml on a version tag. Without
+// CURSEFORGE_API_KEY (e.g. on a dev machine) it's always a dry run: the upload is only written to build/publishMods.
+publishMods {
+    file = jar.archiveFile
+    changelog = changelogSection
+    version = mod_version
+    type = STABLE
+    // Same names as the uploads so far (create_envelope-1.1.0.jar).
+    displayName = "${mod_id}-${mod_version}"
+    modLoaders.add('neoforge')
+    dryRun = providers.environmentVariable('CURSEFORGE_API_KEY').getOrNull() == null
+
+    curseforge {
+        projectId = '1698695'
+        accessToken = providers.environmentVariable('CURSEFORGE_API_KEY')
+        minecraftVersions.add(minecraft_version)
+        client = true
+        server = true
+        requires('create', 'envelope')
+    }
+    github {
+        accessToken = providers.environmentVariable('GITHUB_TOKEN')
+        repository = 'ManOfKott/create-envelope'
+        commitish = providers.environmentVariable('GITHUB_SHA').orElse('master')
+        tagName = "v${mod_version}"
+    }
 }
 
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.

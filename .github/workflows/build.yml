@@ -28,3 +28,7 @@ jobs:
 
       - name: Build with Gradle
         run: ./gradlew build
+
+      # Fails the build if a GameTest (src/gametest) fails.
+      - name: Run GameTests
+        run: ./gradlew runGameTestServer --console=plain

@@ -71,6 +71,8 @@ public class MailboxItemHandler implements IItemHandler {
         }
 
         ItemStack existing = mailbox.getItem(slot);
+        // Never merge into a different item (e.g. beetroot seeds onto wheat seeds would turn them into wheat seeds).
+        if (!existing.isEmpty() && !ItemStack.isSameItemSameComponents(existing, stack)) return stack;
         int maxInsert = Math.min(stack.getMaxStackSize(), getSlotLimit(slot)) - existing.getCount();
         if (maxInsert <= 0) return stack;
 
