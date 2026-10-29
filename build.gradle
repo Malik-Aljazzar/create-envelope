@@ -239,7 +239,7 @@ publishMods {
     }
     github {
         accessToken = providers.environmentVariable('GITHUB_TOKEN')
-        repository = 'ManOfKott/create-envelope'
+        repository = 'Malik-Aljazzar/create-envelope'
         commitish = providers.environmentVariable('GITHUB_SHA').orElse('master')
         tagName = "v${mod_version}"
     }
