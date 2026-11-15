@@ -5,8 +5,12 @@
     "compatibilityLevel": "JAVA_21",
     "mixins": [
         "AddressTagItemMixin",
+        "BlockDropOffHandlerMixin",
+        "ChunkMapAccessor",
         "EnvelopeCapabilityRegistrationMixin",
+        "MailboxBlockEntityAccessor",
         "MailboxBlockEntityMixin",
+        "MailboxesMixin",
         "MailboxMenuMixin",
         "PackagerBlockEntityMixin",
         "PackingMenuMixin",

@@ -2,6 +2,14 @@
 
 All notable changes to Create: Envelope Compat (Zeta Fix) are documented in this file.
 
+## [1.1.2]
+
+### Fixes
+- Mail to a mailbox that was loaded a short while ago is now delivered instead of coming back as "Recipient Not Found". This hit mailboxes a player had just left (or one that sits a few chunks away from a force-loaded area): when a chunk drops out of the fully loaded area, Minecraft keeps it - mailbox included - in memory for a while, but Envelope only looked for mailboxes in fully loaded chunks, and it writes a mailbox's inbox to its storage only once the chunk is unloaded completely. In between, the inbox could not be found anywhere. Deliveries now reach the mailbox in that state too. Affects Envelope 0.8.0 to 0.8.2.
+- A mailbox whose stored inbox went missing no longer refuses all mail until someone visits it. Envelope keeps the inbox of a loaded mailbox only in memory, so a server crash loses it (the mail that was in it cannot be restored by this mod). Its chunk is now loaded once for the delivery, and the inbox is stored again when the chunk unloads. This is logged as a warning, as is an address that is registered without a mailbox at its position (such an address is tried at most once a minute).
+
+This is a server-side fix; players don't need to update.
+
 ## [1.1.1]
 
 ### Fixes
