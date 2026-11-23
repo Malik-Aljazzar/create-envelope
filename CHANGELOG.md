@@ -2,6 +2,16 @@
 
 All notable changes to Create: Envelope Compat (Zeta Fix) are documented in this file.
 
+## [1.1.3]
+
+### Fixes
+- Packing a Paper Box no longer leaves a "ghost" package in your inventory ([#2](https://github.com/Malik-Aljazzar/create-envelope/issues/2)). The packing screen packs on your side right away and lets the server do the same. This mod picked the Create box at random, so you and the server ended up with different packages: you saw one the server didn't have, and tags or crafting with it seemed to work for a moment and then didn't. The box now depends only on the contents, so both sides make the same package. The server also sends the packed package straight to your inventory, so it is right even for players on an older version of this mod.
+- Crafting a package with an Address Tag now also sets its Create address. Before, only Envelope's address was set, so Create still treated the package as having no address (or its old one).
+- Right-clicking an Address Tag onto a Create package now follows Envelope's own rules: a blank Address Tag removes the address (before, it did nothing), and no tag is used up in creative mode. An address that Create itself gave the package is kept when the Envelope address is removed.
+- Seal Stamps work on packed packages again. Packing turns a Paper Box into a Create package, and Envelope can't seal those, so the stamp did nothing. Such a package is now sealed into Envelope's Sealed Package, with its contents, address and Payback Tag. A Create package that can't become an Envelope package without losing something (part of a Create order, more than 6 stacks, or an address only Create has) stays as it is.
+
+Update the server for all of this. Clients should update too, so that what you see right away already matches the server.
+
 ## [1.1.2]
 
 ### Fixes

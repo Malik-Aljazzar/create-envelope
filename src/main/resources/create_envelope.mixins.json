@@ -4,6 +4,7 @@
     "package": "net.multyfora.compat.mixin",
     "compatibilityLevel": "JAVA_21",
     "mixins": [
+        "AddressTagApplicationRecipeMixin",
         "AddressTagItemMixin",
         "BlockDropOffHandlerMixin",
         "ChunkMapAccessor",
@@ -14,7 +15,8 @@
         "MailboxMenuMixin",
         "PackagerBlockEntityMixin",
         "PackingMenuMixin",
-        "SawBlockEntityMixin"
+        "SawBlockEntityMixin",
+        "SealStampItemMixin"
     ],
     "client": [],
     "server": []

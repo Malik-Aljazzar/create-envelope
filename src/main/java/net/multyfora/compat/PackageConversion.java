@@ -20,6 +20,7 @@ package net.multyfora.compat;
 
 import com.simibubi.create.AllDataComponents;
 import com.simibubi.create.content.logistics.box.PackageItem;
+import com.simibubi.create.content.logistics.box.PackageStyles;
 import io.github.mortuusars.envelope.Envelope;
 import io.github.mortuusars.envelope.world.block.mailbox.MailboxBlockEntity;
 import io.github.mortuusars.envelope.world.item.component.PackageContents;
@@ -32,6 +33,7 @@ import io.github.mortuusars.envelope.world.mail.service.ServiceAddressDefinition
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -51,6 +53,7 @@ import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 public class PackageConversion {
 
@@ -73,6 +76,12 @@ public class PackageConversion {
         return isEnvelopePackage(stack) || isCreatePackage(stack);
     }
 
+    /**
+     * The Create package for an Envelope package. Deterministic: the same package always gives the same Create
+     * package (box style included), because the packing screen runs this on the client as a prediction too - a
+     * different result there leaves the player with a package in their inventory that the server doesn't have.
+     * Returns the input unchanged if it can't be converted completely (a loot-table package off the server thread).
+     */
     public static ItemStack toCreatePackage(ItemStack envelopePackage) {
         if (isCreatePackage(envelopePackage))
             return envelopePackage;
@@ -81,13 +90,13 @@ public class PackageConversion {
 
         ItemStack workingStack = envelopePackage.copy();
 
-        if (workingStack.has(DataComponents.CONTAINER_LOOT))
-            resolveLootTable(workingStack);
+        if (workingStack.has(DataComponents.CONTAINER_LOOT) && !resolveLootTable(workingStack))
+            return envelopePackage;
 
         PackageContents contents = workingStack.get(Envelope.DataComponents.PACKAGE_CONTENTS);
         List<ItemStack> items = contents != null ? contents.copyItems() : List.of();
 
-        ItemStack createPackage = PackageItem.containing(items);
+        ItemStack createPackage = withStableStyle(PackageItem.containing(items), items);
 
         copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_ADDRESS_TAG);
         copyEnvelopeComponent(workingStack, createPackage, Envelope.DataComponents.MAIL_DELIVERY_INFO);
@@ -98,6 +107,84 @@ public class PackageConversion {
         Mail.getRecipient(workingStack).ifPresent(address -> PackageItem.addAddress(createPackage, address.getString()));
 
         return createPackage;
+    }
+
+    /**
+     * {@link PackageItem#containing} picks a random box style. Re-picks it from the contents instead (item ids and
+     * counts - identical on client and server), so a conversion always gives the same item.
+     */
+    private static ItemStack withStableStyle(ItemStack createPackage, List<ItemStack> items) {
+        List<PackageItem> styles = PackageStyles.STANDARD_BOXES;
+        if (styles.isEmpty())
+            return createPackage;
+        int hash = 1;
+        for (ItemStack item : items) {
+            if (item.isEmpty())
+                continue;
+            hash = 31 * hash + BuiltInRegistries.ITEM.getKey(item.getItem()).hashCode();
+            hash = 31 * hash + item.getCount();
+        }
+        PackageItem style = styles.get(Math.floorMod(hash, styles.size()));
+        return createPackage.is(style) ? createPackage : createPackage.transmuteCopy(style);
+    }
+
+    /**
+     * Lets a Create package's address follow its Envelope recipient after an Envelope tool changed the recipient
+     * ({@code before} = the package before, {@code after} = the result, changed in place). A new recipient becomes the
+     * Create address too; a removed recipient removes the Create address only if that was the old recipient's - an
+     * address that Create itself gave the package stays.
+     */
+    public static void followRecipient(ItemStack before, ItemStack after) {
+        if (!isCreatePackage(after))
+            return;
+        Optional<Address> recipient = Mail.getRecipient(after);
+        if (recipient.isPresent()) {
+            PackageItem.addAddress(after, recipient.get().getString());
+            return;
+        }
+        Optional<Address> previous = Mail.getRecipient(before);
+        if (previous.isPresent() && previous.get().getString().equals(PackageItem.getAddress(after)))
+            PackageItem.clearAddress(after);
+    }
+
+    /**
+     * The Envelope package a Create package can be sealed as (Envelope only seals its own packages), or
+     * {@link ItemStack#EMPTY} if it can't become one without losing something: it must not be part of a Create
+     * order, its contents must fit an Envelope package, and a Create address must be the same as the Envelope
+     * recipient (sealing keeps only the latter).
+     */
+    public static ItemStack toSealableEnvelopePackage(ItemStack createPackage) {
+        if (!isCreatePackage(createPackage) || createPackage.has(Envelope.DataComponents.SEAL))
+            return ItemStack.EMPTY;
+        if (createPackage.has(AllDataComponents.PACKAGE_ORDER_DATA) || createPackage.has(AllDataComponents.PACKAGE_ORDER_CONTEXT))
+            return ItemStack.EMPTY;
+
+        String createAddress = PackageItem.getAddress(createPackage);
+        if (createAddress != null && !createAddress.isEmpty()
+                && !Mail.getRecipient(createPackage).map(address -> address.getString().equals(createAddress)).orElse(false))
+            return ItemStack.EMPTY;
+
+        List<ItemStack> items = new ArrayList<>();
+        ItemStackHandler crateContents = PackageItem.getContents(createPackage);
+        for (int i = 0; i < crateContents.getSlots(); i++) {
+            ItemStack slotItem = crateContents.getStackInSlot(i);
+            if (slotItem.isEmpty())
+                continue;
+            if (!PackageContents.canHold(slotItem))
+                return ItemStack.EMPTY;
+            items.add(slotItem.copy());
+        }
+        if (items.isEmpty() || items.size() > PackageContents.SLOTS)
+            return ItemStack.EMPTY;
+
+        ItemStack envelopePackage = new ItemStack(Envelope.Items.PACKAGE.get(), createPackage.getCount());
+        envelopePackage.set(Envelope.DataComponents.PACKAGE_CONTENTS, new PackageContents(items));
+        copyEnvelopeComponent(createPackage, envelopePackage, Envelope.DataComponents.MAIL_ADDRESS_TAG);
+        copyEnvelopeComponent(createPackage, envelopePackage, Envelope.DataComponents.MAIL_DELIVERY_INFO);
+        copyEnvelopeComponent(createPackage, envelopePackage, Envelope.DataComponents.MAIL_PAYBACK_TAG);
+        copyEnvelopeComponent(createPackage, envelopePackage, Envelope.DataComponents.PACKAGE_EXPERIENCE);
+        copyEnvelopeComponent(createPackage, envelopePackage, DataComponents.CUSTOM_NAME);
+        return envelopePackage;
     }
 
     /**
@@ -195,12 +282,16 @@ public class PackageConversion {
         return null;
     }
 
-    private static void resolveLootTable(ItemStack stack) {
+    /**
+     * Rolls a loot-table package's contents into the stack. Only on the server thread: a client (also the one of a
+     * singleplayer world, whose server runs on another thread) can't roll it. Returns false if it wasn't rolled.
+     */
+    private static boolean resolveLootTable(ItemStack stack) {
         SeededContainerLoot containerLoot = stack.get(DataComponents.CONTAINER_LOOT);
-        if (containerLoot == null) return;
+        if (containerLoot == null) return true;
 
         var server = ServerLifecycleHooks.getCurrentServer();
-        if (server == null) return;
+        if (server == null || !server.isSameThread()) return false;
         ServerLevel serverLevel = server.overworld();
         LootTable lootTable = serverLevel.getServer().reloadableRegistries().getLootTable(containerLoot.lootTable());
         LootParams params = new LootParams.Builder(serverLevel)
@@ -210,6 +301,7 @@ public class PackageConversion {
         lootTable.fill(tempContainer, params, containerLoot.seed());
         stack.set(Envelope.DataComponents.PACKAGE_CONTENTS, new PackageContents(tempContainer));
         stack.remove(DataComponents.CONTAINER_LOOT);
+        return true;
     }
 
     private static <T> void copyEnvelopeComponent(ItemStack from, ItemStack to,
